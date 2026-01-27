@@ -45,15 +45,17 @@ export const segmentData = async (rawText: string): Promise<DataUnit[]> => {
 /**
  * AGENT 2: The Sampler (Flash Model)
  * Asks the bridge to provide initial coding for HITL verification.
+ * UPDATED: Now supports 'quick' or 'comprehensive' modes.
  */
 export const generateSampleCoding = async (
     units: DataUnit[],
-    themes: Theme[]
+    themes: Theme[],
+    mode: 'quick' | 'comprehensive' // Added parameter
 ): Promise<CodedUnit[]> => {
     const response = await fetch(`${BRIDGE_URL}/generate-sample-coding`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ units, themes })
+        body: JSON.stringify({ units, themes, mode }) // Send mode to bridge
     });
 
     if (!response.ok) throw new Error('Bridge server error at generateSampleCoding');

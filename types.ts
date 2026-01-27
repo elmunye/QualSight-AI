@@ -1,8 +1,9 @@
 export enum AppPhase {
   INGESTION = 1,
   TAXONOMY = 2,
-  SAMPLING = 3,
-  ANALYSIS = 4,
+  SAMPLING_SELECTION = 3,
+  SAMPLING = 4,
+  ANALYSIS = 5,
 }
 
 export enum ContextType {

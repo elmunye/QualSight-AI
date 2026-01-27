@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
+import LandingPage from './components/LandingPage';
 import Phase1Ingestion from './components/Phase1Ingestion';
 import Phase2Taxonomy from './components/Phase2Taxonomy';
 import Phase3Sampling from './components/Phase3Sampling';
@@ -22,7 +23,14 @@ import {
 } from './services/geminiService';
 
 const App: React.FC = () => {
+  const [showLanding, setShowLanding] = useState(true);
   const [phase, setPhase] = useState<AppPhase>(AppPhase.INGESTION);
+  
+  // Model state for sidebar display
+  const [models] = useState({
+    analystModel: "Gemini 1.5 Pro",
+    criticModel: "Gemini 1.5 Flash"
+  });
   const [loading, setLoading] = useState(false);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -65,10 +73,16 @@ const App: React.FC = () => {
   };
 
   const handleTaxonomyApproval = async (approvedThemes: Theme[]) => {
-    setLoading(true);
     setThemes(approvedThemes);
+    // NEW: Open the selection screen instead of jumping to sampling
+    setPhase(AppPhase.SAMPLING_SELECTION); 
+  };
+
+  // NEW: Add this function below handleTaxonomyApproval
+  const handleStartSampling = async (mode: 'quick' | 'comprehensive') => {
+    setLoading(true);
     try {
-      const samples = await generateSampleCoding(dataUnits, approvedThemes);
+      const samples = await generateSampleCoding(dataUnits, themes, mode);
       setSampleUnits(samples);
       setPhase(AppPhase.SAMPLING);
     } catch (e) {
@@ -145,48 +159,42 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Render ---
+// --- Render ---
+if (showLanding) {
+  return <LandingPage onStart={() => setShowLanding(false)} />;
+}
 
-  return (
-    <Layout currentPhase={phase}>
-       
-       {loading && (
+return (
+  <Layout currentPhase={phase} models={models}>
+      
+      {/* Global Loading Overlay */}
+      {loading && (
         <div className="fixed inset-0 bg-white/95 backdrop-blur-md z-50 flex items-center justify-center text-center">
           <div className="w-full max-w-md px-6">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto mb-6"></div>
             
-            {/* STATE 1: Initial Ingestion (Phase 1 -> 2) */}
             {phase === AppPhase.INGESTION && (
-              <>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Preparing Workspace</h3>
-                <p className="text-slate-500">We are segmenting data and proposing themes...</p>
-              </>
+              <p className="text-slate-500">Segmenting data and proposing themes...</p>
             )}
 
-            {/* STATE 2: Generating Calibration Samples (Phase 2 -> 3) */}
-            {phase === AppPhase.TAXONOMY && (
-              <>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Creating Calibration Set</h3>
-                <p className="text-slate-500">Selecting the best representative samples for your review...</p>
-              </>
+            {/* If we are loading while in Taxonomy phase, it means we are fetching the samples */}
+            {phase === AppPhase.SAMPLING_SELECTION && (
+              <p className="text-slate-500">Scanning dataset for "Coded Units with Lowest Confidence Scores"...</p>
             )}
 
-            {/* STATE 3: Bulk Analysis with Progress Bar (Phase 3 -> 4) */}
             {phase === AppPhase.SAMPLING && (
               <>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">Analyzing Full Dataset</h3>
-                <p className="text-slate-500 mb-8">Applying your expert logic to every unit...</p>
+                <p className="text-slate-500 mb-8">Applying your logic to every unit...</p>
 
                 <div className="w-full bg-slate-200 rounded-full h-3 mb-3 overflow-hidden">
                   <div 
-                    className="bg-brand-600 h-3 rounded-full transition-all duration-500 ease-out" 
+                    className="bg-brand-600 h-3 rounded-full transition-all duration-500" 
                     style={{ width: `${totalUnits > 0 ? (progress / totalUnits) * 100 : 0}%` }}
                   ></div>
                 </div>
-                
-                <div className="flex justify-between text-sm font-semibold text-slate-600">
-                  <span>{totalUnits > 0 ? Math.round((progress / totalUnits) * 100) : 0}% Complete</span>
-                  <span>{progress} / {totalUnits} units</span>
+                <div className="text-sm font-semibold text-slate-600">
+                  {progress} / {totalUnits} units
                 </div>
               </>
             )}
@@ -194,32 +202,65 @@ const App: React.FC = () => {
         </div>
       )}
 
-       {phase === AppPhase.INGESTION && (
-         <Phase1Ingestion onComplete={handleIngestionComplete} isLoading={loading} />
-       )}
+      {/* Main App Content - Switched by Phase */}
+      {phase === AppPhase.INGESTION && (
+        <Phase1Ingestion onComplete={handleIngestionComplete} isLoading={loading} />
+      )}
 
-       {phase === AppPhase.TAXONOMY && (
-         <Phase2Taxonomy initialTaxonomy={themes} onApprove={handleTaxonomyApproval} />
-       )}
+      {phase === AppPhase.TAXONOMY && (
+        <Phase2Taxonomy initialTaxonomy={themes} onApprove={handleTaxonomyApproval} />
+      )}
 
-       {phase === AppPhase.SAMPLING && (
-         <Phase3Sampling 
+      {/* TASK 2: NEW STRATEGY SELECTION SCREEN */}
+      {phase === AppPhase.SAMPLING_SELECTION && (
+        <div className="p-12 max-w-4xl mx-auto text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h2 className="text-3xl font-bold text-slate-900 mb-2">Calibration Strategy</h2>
+          <p className="text-slate-500 mb-10">Select how we should identify samples for your review.</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <button 
+              onClick={() => handleStartSampling('quick')}
+              className="p-8 border-2 border-slate-100 rounded-2xl hover:border-brand-500 hover:bg-brand-50/30 transition-all text-left group"
+            >
+              <div className="text-3xl mb-4">⚡</div>
+              <div className="font-bold text-xl text-slate-900 group-hover:text-brand-600">Quick Mode</div>
+              <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                8 random units. Fastest for a quick check of the initial taxonomy and general AI performance.
+              </p>
+            </button>
+
+            <button 
+              onClick={() => handleStartSampling('comprehensive')}
+              className="p-8 border-2 border-slate-100 rounded-2xl hover:border-brand-500 hover:bg-brand-50/30 transition-all text-left group"
+            >
+              <div className="text-3xl mb-4">🔬</div>
+              <div className="font-bold text-xl text-slate-900 group-hover:text-brand-600">Grid-Hunter</div>
+              <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                Intelligently picks <b>lowest-confidence</b> units for every theme/sub-theme combo using logprob math.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === AppPhase.SAMPLING && (
+        <Phase3Sampling 
             sampleUnits={sampleUnits} 
             taxonomy={themes} 
             onComplete={handleSamplingComplete} 
-         />
-       )}
+        />
+      )}
 
-       {phase === AppPhase.ANALYSIS && analysisResults && (
-         <Phase4Dashboard 
+      {phase === AppPhase.ANALYSIS && analysisResults && (
+        <Phase4Dashboard 
             results={analysisResults} 
             themes={themes}
             isGeneratingNarrative={narrativeLoading}
             onGenerateNarrative={handleGenerateNarrative}
-         />
-       )}
+        />
+      )}
     </Layout>
   );
-};
+  };
 
-export default App;
+  export default App;

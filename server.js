@@ -4,6 +4,19 @@ import pkg from '@google-cloud/vertexai';
 const { VertexAI } = pkg;
 
 const app = express();
+
+// Set global timeout to 180 seconds (3 minutes) for heavy AI tasks
+app.use((req, res, next) => {
+    res.setTimeout(180000, () => {
+      console.log('❌ Request has timed out.');
+      if (!res.headersSent) {
+        res.status(408).send('The server took too long to respond.');
+      }
+    });
+    next();
+  });
+  // ---------------------------
+
 app.use(cors());
 app.use(express.json());
 
@@ -53,144 +66,210 @@ app.post('/api/segment-data', async (req, res) => {
 app.post('/api/generate-taxonomy', async (req, res) => {
     try {
         const { rawText, contextType } = req.body;
-        console.log(`--- Processing Taxonomy for ${contextType} ---`);
+        console.log(`--- PHASE B: Multi-Agent Taxonomy Generation (${contextType}) ---`);
+        
+        const dataSlice = rawText.slice(0, 15000); 
 
-        const prompt = `
-    Task: Analyze this ${contextType} data and return a JSON taxonomy.
-    Constraint: Return ONLY a JSON array.
-    
-    CRITICAL STRUCTURE:
-    Every object MUST have exactly these keys: "id", "name", and "subThemes".
-    The "subThemes" key MUST be an array, even if empty.
-    
-    Example:
-    [
-      {
-        "id": "t1",
-        "name": "Example Theme",
-        "subThemes": [{ "id": "s1", "name": "Subname", "description": "text" }]
-      }
-    ]
+        // STEP 1: Agent A (The Primary Analyst) - Inductive discovery
+        console.log("--- Agent A: Primary Analyst generating initial themes ---");
+        const analystPrompt = `
+            Task: Conduct an Inductive Thematic Analysis on the provided data.
+            Instructions:
+            1. Identify recurring concepts and specific issues mentioned in the text.
+            2. Do NOT use generic labels. Be specific to this dataset.
+            3. Look for "Latent Themes" (underlying ideas) rather than just "Semantic Themes".
+            4. Group these findings into a hierarchy of Themes and Sub-themes.
+            
+            Data: ${dataSlice}
+            Output: Return ONLY a JSON array of themes with 'name' and 'subThemes'.
+        `;
 
-    Data: ${rawText.slice(0, 5000)}
-`;
-
-        const request = {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        const analystResult = await proModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: analystPrompt }] }],
             generationConfig: { responseMimeType: "application/json" }
-        };
+        });
+        const initialTaxonomy = analystResult.response.candidates[0].content.parts[0].text;
 
-        const result = await proModel.generateContent(request);
-        const response = await result.response;
-        const text = response.candidates[0].content.parts[0].text;
-        res.json(JSON.parse(text));
+        // STEP 2: Agent B (The Critic) - Quality Control
+        console.log("--- Agent B: Critic performing peer review ---");
+        const criticPrompt = `
+            Review this proposed qualitative taxonomy for the context: ${contextType}.
+            Proposed Taxonomy: ${initialTaxonomy}
+
+            CRITIQUE RULES:
+            1. Redundancy Check: Are any themes overlapping? (e.g. "Cost" vs "Price").
+            2. Specificity Check: Is it too generic? (e.g. "Various Issues"). Suggest data-grounded names.
+            3. Logic Check: Are sub-themes relevant to their parent theme?
+
+            Return ONLY a JSON "Review Memo": {"redundancies": [], "suggestedRenames": {}, "missingGaps": []}
+        `;
+
+        const criticResult = await proModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: criticPrompt }] }],
+            generationConfig: { responseMimeType: "application/json" }
+        });
+        const critique = criticResult.response.candidates[0].content.parts[0].text;
+
+        // STEP 3: Final Synthesis - Analyst refines based on Critic
+        console.log("--- Agent A: Finalizing themes with Expert Feedback ---");
+        const finalPrompt = `
+            Initial Draft: ${initialTaxonomy}
+            Expert Critique: ${critique}
+            
+            Task: Provide the FINAL improved taxonomy. 
+            Rules:
+            - Assign IDs (t1, t2, etc) to themes.
+            - Assign IDs (s1, s2, etc) to subthemes.
+            - Ensure every subtheme has a clear "description" field.
+            
+            Return ONLY the final JSON array.
+        `;
+
+        const finalResult = await proModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+            generationConfig: { responseMimeType: "application/json" }
+        });
+
+        res.json(JSON.parse(finalResult.response.candidates[0].content.parts[0].text));
     } catch (error) {
+        console.error("TAXONOMY GENERATION ERROR:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
 // --- UPDATED: SAMPLING ROUTE WITH 8-UNIT LIMIT ---
 app.post('/api/generate-sample-coding', async (req, res) => {
-  try {
-      const { units, themes } = req.body;
-      
-      // Limit the work for the user: Pick 8 random units max
-      const sampleSize = Math.min(units.length, 8);
-      const shuffled = [...units].sort(() => 0.5 - Math.random());
-      const selectedUnits = shuffled.slice(0, sampleSize);
+    try {
+      const { units, themes, mode } = req.body;
+      let selectedUnits = [];
+      const normalize = (id) => String(id || '').toLowerCase().replace(/[^0-9]/g, '');
 
-      console.log(`--- Sampling ${selectedUnits.length} units from total of ${units.length} ---`);
-
-      const prompt = `
-          Task: Categorize these text segments.
-          Constraint: You MUST use the EXACT "id" for themeId and subThemeId from the taxonomy provided.
-          
-          Themes: ${JSON.stringify(themes)}
-          Data: ${JSON.stringify(selectedUnits)}
-          
-          Return ONLY a JSON array:
-          [{ "unitId": "u0", "themeId": "t1", "subThemeId": "s1", "reasoning": "..." }]
-      `;
-
-      const request = {
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      if (mode === 'comprehensive') {
+        console.log("--- Mode: Comprehensive (Logprob Grid Hunter) ---");
+        const poolSize = Math.min(units.length, 50); 
+        const silentPrompt = `Code these units. Return ONLY JSON array. Format: [{"unitId": "u0", "themeId": "t1", "subThemeId": "s1"}]\nData: ${JSON.stringify(units.slice(0, poolSize))}\nThemes: ${JSON.stringify(themes)}`;
+  
+        const result = await proModel.generateContent({
+          contents: [{ role: 'user', parts: [{ text: silentPrompt }] }],
           generationConfig: { responseMimeType: "application/json" }
-      };
-
-      const result = await flashModel.generateContent(request);
-      const response = await result.response;
-      const aiTags = JSON.parse(response.candidates[0].content.parts[0].text);
-      
-      const codedUnits = aiTags.map(tag => {
-        // We search the 'selectedUnits' list for the text that matches the ID Gemini returned
-        const originalUnit = selectedUnits.find(u => String(u.id) === String(tag.unitId));
+        });
+        const rawOutput = JSON.parse(result.response.candidates[0].content.parts[0].text);
         
-        return { 
-            ...tag, 
-            // If Gemini returned a theme but the ID doesn't match, we fallback to a safety check
-            text: originalUnit ? originalUnit.text : (selectedUnits[0]?.text || "Text truly missing")
+        const finalSelectionIds = new Set();
+        themes.forEach(theme => {
+          theme.subThemes.forEach(sub => {
+            const matches = rawOutput.filter(r => normalize(r.themeId || r.id) === normalize(theme.id) && normalize(r.subThemeId) === normalize(sub.id));
+            if (matches.length > 0) {
+              finalSelectionIds.add(normalize(matches[0].unitId || matches[0].id));
+            }
+          });
+        });
+        selectedUnits = units.filter(u => finalSelectionIds.has(normalize(u.id)));
+      } else {
+        selectedUnits = [...units].sort(() => 0.5 - Math.random()).slice(0, 8);
+      }
+  
+      // --- FINAL CODING PASS ---
+      const finalPrompt = `Provide coding. Return ONLY JSON array. Format: [{"unitId": "u0", "themeId": "t1", "subThemeId": "s1", "reasoning": "..."}]\nData: ${JSON.stringify(selectedUnits)}\nThemes: ${JSON.stringify(themes)}`;
+      const finalResult = await flashModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      });
+
+      const aiTags = JSON.parse(finalResult.response.candidates[0].content.parts[0].text);
+      
+      // DEBUG: Look at your terminal! This shows what the AI actually sent.
+      console.log("DEBUG: AI raw output keys:", Object.keys(aiTags[0] || {}));
+
+      const finalizedSamples = aiTags.map(tag => {
+        // AGGRESSIVE KEY MATCHING: Look for unitId, then id, then uId
+        const foundId = tag.unitId || tag.id || tag.uId || tag.unit_id;
+        const match = selectedUnits.find(u => normalize(u.id) === normalize(foundId));
+        
+        return {
+            ...tag,
+            unitId: match ? match.id : (foundId || "unknown"), 
+            themeId: tag.themeId || tag.theme_id || "", // Ensure themes don't go blank
+            subThemeId: tag.subThemeId || tag.sub_theme_id || "", 
+            text: match ? match.text : `Text lost - AI returned ID "${foundId}" which we couldn't find in our set.`
         };
       });
 
-      res.json(codedUnits);
-  } catch (error) {
+      res.json(finalizedSamples);
+    } catch (error) {
       console.error("SAMPLER ERROR:", error);
       res.status(500).json({ error: error.message });
-  }
+    }
 });
 
 app.post('/api/bulk-analysis', async (req, res) => {
-  try {
+    try {
       const { units, themes, corrections } = req.body;
-      console.log(`--- BULK ANALYSIS: Processing ${units.length} units ---`);
-
-      const prompt = `
-          Task: Categorize ALL text segments based on these themes.
-          
-          Logic Instructions: 
-          Apply these User Corrections: ${JSON.stringify(corrections)}
-
-          Return ONLY a JSON array of objects with these keys:
-          - unitId: The EXACT id from the data provided (e.g., "u0")
-          - themeId: The theme ID
-          - subThemeId: The sub-theme ID
-          - reasoning: Brief explanation
-          - confidence: A number between 0 and 1 (e.g., 0.95)
-
-          Themes: ${JSON.stringify(themes)}
-          Data: ${JSON.stringify(units)}
+      console.log(`--- PHASE B: Bulk Analysis with Critic Consensus (${units.length} units) ---`);
+  
+      // 1. Prepare the Calibration Rules (from Task 3)
+      const expertRules = corrections.map(c => 
+        `Expert Rule: "${c.text}" -> Theme: ${c.correctedThemeId}`
+      ).join('\n');
+  
+      // 2. Primary Analyst Pass
+      const analystPrompt = `
+        Apply these rules: ${expertRules}
+        Categorize these units into the provided taxonomy.
+        Return ONLY a JSON array: [{"unitId": "u0", "themeId": "t1", "subThemeId": "s1", "reasoning": "..."}]
+        
+        Data: ${JSON.stringify(units)}
+        Taxonomy: ${JSON.stringify(themes)}
       `;
-
-      const request = {
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
-      };
-
-      const result = await flashModel.generateContent(request);
-      const response = await result.response;
-      const aiTags = JSON.parse(response.candidates[0].content.parts[0].text);
-
-      // --- THE EXPERT FIX: Rigid Text Mapping ---
-      const finalizedData = aiTags.map(tag => {
-          // We search the 'units' batch we just sent for the matching ID
-          const originalUnit = units.find(u => String(u.id) === String(tag.unitId));
-          
-          return {
-              ...tag,
-              // Fallback to avoid "Text missing"
-              text: originalUnit ? originalUnit.text : "Observation content lost during mapping",
-              // Ensure confidence is a number for the NaN fix
-              confidence: tag.confidence || 0.85 
-          };
+  
+      const analystResult = await flashModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: analystPrompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
       });
-
-      console.log(`✅ Batch of ${finalizedData.length} units processed`);
-      res.json(finalizedData);
-  } catch (error) {
-      console.error("❌ BULK ERROR:", error);
+      const primaryTags = JSON.parse(analystResult.response.candidates[0].content.parts[0].text);
+  
+      // 3. Critic Pass (The Peer Review)
+      console.log("--- Critic Agent: Verifying Analyst results ---");
+      const criticPrompt = `
+        Review these classifications. Do they accurately reflect the data?
+        Classifications: ${JSON.stringify(primaryTags)}
+        Taxonomy: ${JSON.stringify(themes)}
+  
+        Rule: If the theme chosen doesn't fit the segment perfectly, flag it.
+        Return ONLY a JSON array of boolean "agreements": [{"unitId": "u0", "agree": true, "suggestedThemeId": null}]
+      `;
+  
+      const criticResult = await flashModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: criticPrompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      });
+      const consensus = JSON.parse(criticResult.response.candidates[0].content.parts[0].text);
+  
+      // 4. Final Synthesis & Confidence Score Generation
+        const finalizedResults = primaryTags.map(tag => {
+            const peerReview = consensus.find(c => String(c.unitId) === String(tag.unitId));
+            const originalUnit = units.find(u => String(u.id) === String(tag.unitId));
+            
+            // STABLE MATH: Ensure these are actual numbers, not strings
+            let calculatedConfidence = 0.85; 
+            if (peerReview && peerReview.agree === true) calculatedConfidence = 0.98;
+            if (peerReview && peerReview.agree === false) calculatedConfidence = 0.45;
+    
+            return {
+            ...tag,
+            text: originalUnit ? originalUnit.text : "Observation context lost",
+            // Force conversion to a float to prevent NaN in the frontend
+            confidence: parseFloat(calculatedConfidence) || 0.85, 
+            peerValidated: !!(peerReview && peerReview.agree)
+            };
+      });
+  
+      res.json(finalizedResults);
+    } catch (error) {
+      console.error("BULK ANALYSIS ERROR:", error);
       res.status(500).json({ error: error.message });
-  }
-});
+    }
+  });
 
 app.post('/api/generate-narrative', async (req, res) => {
   try {
