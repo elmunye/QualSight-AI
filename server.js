@@ -1,32 +1,37 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
-import pkg from '@google-cloud/vertexai';
-const { VertexAI } = pkg;
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// ADD THIS LINE BELOW YOUR IMPORTS
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
-// Set global timeout to 180 seconds (3 minutes) for heavy AI tasks
+// 1. Timeout & Middleware
 app.use((req, res, next) => {
-    res.setTimeout(180000, () => {
-      console.log('❌ Request has timed out.');
-      if (!res.headersSent) {
-        res.status(408).send('The server took too long to respond.');
-      }
-    });
-    next();
+  req.setTimeout(180000); 
+  res.setTimeout(180000);
+  res.on('timeout', () => {
+    console.error('❌ Request Timed Out (180s)');
+    if (!res.headersSent) {
+      res.status(408).send('Analysis took too long. Try a smaller dataset.');
+    }
   });
-  // ---------------------------
+  next();
+});
 
 app.use(cors());
 app.use(express.json());
 
-// Initialize Vertex AI
-const project = 'qualisight-ai'; 
-const location = 'us-central1';
-const vertex_ai = new VertexAI({ project, location });
+// 2. Initialize the AI with your API Key
+// This reads the key you provided in the 'gcloud run deploy' command
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 
-const proModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-pro' });
-const flashModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+// Use 1.5 Pro and Flash (The current stable production standards)
+const proModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+const flashModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // --- NEW: INTELLIGENT SEGMENTATION ROUTE ---
 // This uses AI to ensure citations stay attached to their sentences.
@@ -306,4 +311,23 @@ app.post('/api/generate-narrative', async (req, res) => {
   }
 });
 
-app.listen(3001, () => console.log('🚀 Bridge Server active on http://localhost:3001'));
+// --- DEPLOYMENT CONFIGURATION ---
+
+// 1. Set the port (Google Cloud Run provides this via environment variable)
+const port = process.env.PORT || 8080;
+
+// 2. Serve the static files from your React build (the 'dist' folder)
+app.use(express.static(path.join(__dirname, 'dist'))); 
+
+// 3. The Express 5 "Catch-All" logic
+app.get('/*path', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: "API Route Not Found" });
+  }
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+// 4. Start the engine
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 QualiSight LIVE on port ${port}`);
+}); // <--- ADD THIS LINE (The missing closing brackets)

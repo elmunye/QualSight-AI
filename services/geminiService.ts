@@ -1,7 +1,9 @@
 import { Theme, DataUnit, CodedUnit, SampleCorrection } from "../types";
 
-// The address of your local Node.js bridge server
-const BRIDGE_URL = 'http://localhost:3001/api';
+// Detect if we are running locally or in production
+const BRIDGE_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:8080/api' // Use 8080 to match our new local default
+    : 'https://qualisight-v1-113045604803.us-central1.run.app/api';
 
 /**
  * AGENT 1: The Ontologist (Pro Model)
@@ -27,7 +29,7 @@ export const generateTaxonomy = async (
  */
 export const segmentData = async (rawText: string): Promise<DataUnit[]> => {
     // We send the raw text to our Node.js server (the Kitchen)
-    const response = await fetch('http://localhost:3001/api/segment-data', {
+    const response = await fetch(`${BRIDGE_URL}/segment-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: rawText })
@@ -86,7 +88,7 @@ export const performBulkAnalysis = async (
  * Asks the bridge to write the final narrative.
  */
 export const generateNarrative = async (units: CodedUnit[], themes: Theme[]): Promise<string> => {
-    const response = await fetch('http://localhost:3001/api/generate-narrative', {
+    const response = await fetch(`${BRIDGE_URL}/generate-narrative`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ units, themes })

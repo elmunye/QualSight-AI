@@ -67,7 +67,7 @@ const DashboardPreview = () => {
           {/* Executive Narrative Card (Agent 6) */}
           <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col h-full">
             <div className="flex justify-between items-start mb-3">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase">Executive Narrative</h3>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase">Analysis & Narrative</h3>
               <span className="text-[7px] font-bold text-brand-600 bg-brand-50 px-1 py-0.5 rounded uppercase">Agent 6</span>
             </div>
             <div className="space-y-3 flex-grow">
@@ -158,7 +158,7 @@ const SIMULATED_TASKS = [
   { 
     agent: "6. Reporter", 
     task: "Synthesizing abstract narratives...", 
-    status: "Executive Synthesis Mode",
+    status: "Synthesis Mode",
     color: "bg-emerald-500",
     bars: [80, 70, 95] 
   }
@@ -355,7 +355,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
                   icon: FileText,
                   title: "6. The Reporter",
                   desc: "Synthesizes thousands of data units into executive narratives grounded in your verbatim evidence.",
-                  role: "Executive Synthesis",
+                  role: "Coded Data",
                   isHuman: false
                 }
               ].map((agent, i) => (
