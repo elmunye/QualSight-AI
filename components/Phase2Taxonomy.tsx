@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Theme, SubTheme } from '../types';
-import { Plus, Trash2, CheckCircle, Edit2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 const AutoResizeTextarea = ({ value, onChange, className }: { value: string, onChange: (val: string) => void, className: string }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -13,7 +13,6 @@ const AutoResizeTextarea = ({ value, onChange, className }: { value: string, onC
     }
   };
 
-  // This ensures the height is set immediately on load and on every window resize
   useEffect(() => {
     adjustHeight();
     window.addEventListener('resize', adjustHeight);
@@ -39,8 +38,9 @@ interface Props {
 }
 
 const Phase2Taxonomy: React.FC<Props> = ({ initialTaxonomy, onApprove }) => {
-  const [themes, setThemes] = useState<Theme[]>(initialTaxonomy);
-  const [expandedTheme, setExpandedTheme] = useState<string | null>(initialTaxonomy[0]?.id || null);
+  // SAFEGUARD: Ensure we default to an empty array if data is missing
+  const [themes, setThemes] = useState<Theme[]>(initialTaxonomy || []);
+  const [expandedTheme, setExpandedTheme] = useState<string | null>(initialTaxonomy?.[0]?.id || null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const toggleExpand = (id: string) => {
@@ -73,6 +73,21 @@ const Phase2Taxonomy: React.FC<Props> = ({ initialTaxonomy, onApprove }) => {
       };
     }));
   };
+
+  // EMPTY STATE: If no themes exist (API failed or returned nothing)
+  if (!themes || themes.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto mt-8 p-8 bg-white rounded-xl shadow border border-red-100 text-center">
+        <h3 className="text-lg font-bold text-red-600 mb-2">Taxonomy Generation Failed</h3>
+        <p className="text-slate-600">
+          The AI did not return any themes. This usually means the Google API is disabled or the key is invalid.
+        </p>
+        <div className="mt-4 p-4 bg-slate-50 text-sm text-slate-500 font-mono text-left overflow-x-auto rounded">
+            Tip: Check the console (F12) for "403 Forbidden" errors.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -126,7 +141,7 @@ const Phase2Taxonomy: React.FC<Props> = ({ initialTaxonomy, onApprove }) => {
                 </div>
               </div>
 
-              {/* Right Section: Badge and Actions (Stacks below on very small screens) */}
+              {/* Right Section: Badge and Actions */}
               <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto flex-shrink-0">
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap">
                     {(theme.subThemes || []).length} sub-themes
@@ -143,7 +158,8 @@ const Phase2Taxonomy: React.FC<Props> = ({ initialTaxonomy, onApprove }) => {
             {expandedTheme === theme.id && (
               <div className="p-4 border-t border-slate-100">
                 <div className="space-y-3">
-                  {theme.subThemes.map((sub) => (
+                  {/* CORRECTED LOOP: Iterate over subThemes, NOT themes */}
+                  {(theme.subThemes || []).map((sub) => (
                     <div key={sub.id} className="flex items-start gap-3 group p-2 rounded hover:bg-slate-50">
                       <div className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></div>
                       <div className="flex-grow space-y-1">
@@ -171,14 +187,9 @@ const Phase2Taxonomy: React.FC<Props> = ({ initialTaxonomy, onApprove }) => {
                   ))}
                   <button 
                     onClick={() => {
-                      // Generate a unique ID for the new sub-theme
                       const newSubId = `sub-${Date.now()}`;
-                      
-                      // Map through existing themes to find the one being edited
                       setThemes(themes.map(t => {
                         if (t.id !== theme.id) return t;
-                        
-                        // Return the updated theme with the new sub-theme added to the list
                         return { 
                           ...t, 
                           subThemes: [

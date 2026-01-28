@@ -28,8 +28,8 @@ const App: React.FC = () => {
   
   // Model state for sidebar display
   const [models] = useState({
-    analystModel: "Gemini 1.5 Pro",
-    criticModel: "Gemini 1.5 Flash"
+    analystModel: "Gemini 2.5 Pro",
+    criticModel: "Gemini 2.5 Flash"
   });
   const [loading, setLoading] = useState(false);
   const [narrativeLoading, setNarrativeLoading] = useState(false);

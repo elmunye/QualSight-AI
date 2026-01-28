@@ -1,9 +1,15 @@
 import { Theme, DataUnit, CodedUnit, SampleCorrection } from "../types";
 
-// Detect if we are running locally or in production
-const BRIDGE_URL = window.location.hostname === 'localhost' 
-    ? 'http://localhost:8080/api' // Use 8080 to match our new local default
-    : 'https://qualisight-v1-113045604803.us-central1.run.app/api';
+// --- BRIDGE CONFIGURATION ---
+// Detect if we are running locally (localhost or internal network IP)
+const isLocal = window.location.hostname === 'localhost' || 
+                window.location.hostname === '127.0.0.1' || 
+                window.location.hostname.startsWith('192.168.');
+
+// FIXED: Ensure we point to port 8080 AND include the '/api' prefix
+export const BRIDGE_URL = isLocal 
+  ? `http://${window.location.hostname}:8080/api` 
+  : 'https://qualisight-v1-113045604803.us-central1.run.app/api';
 
 /**
  * AGENT 1: The Ontologist (Pro Model)
@@ -28,7 +34,6 @@ export const generateTaxonomy = async (
  * Sends raw text to the bridge server for intelligent, context-aware segmentation.
  */
 export const segmentData = async (rawText: string): Promise<DataUnit[]> => {
-    // We send the raw text to our Node.js server (the Kitchen)
     const response = await fetch(`${BRIDGE_URL}/segment-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,24 +45,22 @@ export const segmentData = async (rawText: string): Promise<DataUnit[]> => {
         throw new Error(errorData.error || 'Failed to segment data with AI');
     }
 
-    // The server returns a clean array of objects: { id: "u0", text: "..." }
     return await response.json();
 };
 
 /**
  * AGENT 2: The Sampler (Flash Model)
  * Asks the bridge to provide initial coding for HITL verification.
- * UPDATED: Now supports 'quick' or 'comprehensive' modes.
  */
 export const generateSampleCoding = async (
     units: DataUnit[],
     themes: Theme[],
-    mode: 'quick' | 'comprehensive' // Added parameter
+    mode: 'quick' | 'comprehensive'
 ): Promise<CodedUnit[]> => {
     const response = await fetch(`${BRIDGE_URL}/generate-sample-coding`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ units, themes, mode }) // Send mode to bridge
+        body: JSON.stringify({ units, themes, mode })
     });
 
     if (!response.ok) throw new Error('Bridge server error at generateSampleCoding');
