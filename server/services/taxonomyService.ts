@@ -1,4 +1,4 @@
-import { proModel, cleanJSON } from './geminiService.js';
+import { proModel, cleanJSON, generateJSON } from './geminiService.js';
 import { buildAnalystPromptTemplate, criticPrompt, finalPrompt, getAnalystPromptFixedSuffix } from '../prompts/taxonomyPrompts.js';
 import { Theme } from '../../types.js';
 
@@ -27,36 +27,24 @@ export const generateTaxonomyChain = async (
     purpose: string, 
     customAnalystPrompt?: string
 ) => {
+    // Truncate dataSlice to prevent context explosion
+    const MAX_CHARS = 50000;
+    const safeData = dataSlice.length > MAX_CHARS 
+        ? dataSlice.slice(0, MAX_CHARS) + "\n...[TRUNCATED]..." 
+        : dataSlice;
+
     // Step 2a – Taxonomy Analyst (Pro)
     const analystPrompt = customAnalystPrompt && typeof customAnalystPrompt === 'string'
-        ? customAnalystPrompt.trim() + '\n\n' + getAnalystPromptFixedSuffix(dataSlice)
-        : buildAnalystPromptTemplate(purpose).replace(/\{\{DATA\}\}/g, dataSlice);
+        ? customAnalystPrompt.trim() + '\n\n' + getAnalystPromptFixedSuffix(safeData)
+        : buildAnalystPromptTemplate(purpose).replace(/\{\{DATA\}\}/g, safeData);
     
-    // Correction: customAnalystPrompt handling in original code appended suffix.
-    // In our extracted prompts, we have getAnalystPromptFixedSuffix.
-    // We need to import it.
-    
-    // Let's refactor this slightly to be cleaner in a moment, but for now matching logic.
-    
-    const analystResult = await proModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: analystPrompt }] }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
-    });
-    const initialTaxonomy = cleanJSON(analystResult.response.text());
+    const initialTaxonomy = await generateJSON(proModel, analystPrompt);
 
     // Step 2b – Taxonomy Critic (Methodological Auditor)
-    const criticResult = await proModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: criticPrompt(contextType, initialTaxonomy) }] }],
-        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
-    });
-    const critique = cleanJSON(criticResult.response.text());
+    const critique = await generateJSON(proModel, criticPrompt(contextType, JSON.stringify(initialTaxonomy)));
 
     // Step 2c – Taxonomy Finalizer (Principal Investigator)
-    const finalResult = await proModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: finalPrompt(contextType, initialTaxonomy, critique) }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' }
-    });
+    const raw = await generateJSON(proModel, finalPrompt(contextType, JSON.stringify(initialTaxonomy), JSON.stringify(critique)));
     
-    const raw = JSON.parse(cleanJSON(finalResult.response.text()));
     return normalizeThemes(raw);
 }

@@ -5,7 +5,17 @@ export const bulkAnalystPrompt = (themes: Theme[], units: DataUnit[], fewShotExa
     You are a Production Qualitative Analyst. You are scaling a thematic analysis across a large dataset.
 
     ### Inputs
-    1. **The Taxonomy (Codebook):** ${JSON.stringify(themes)}
+    1. **The Taxonomy (Codebook):** 
+    ${JSON.stringify(themes.map((t, i) => ({
+        index: i,
+        name: t.name,
+        description: t.description,
+        subThemes: t.subThemes.map((s, j) => ({
+            subIndex: j,
+            name: s.name,
+            description: s.description
+        }))
+    })), null, 2)}
 
     2. **Gold Standard Examples (USER VALIDATED - FOLLOW THESE STRICTLY):**
        ${fewShotExamples}
@@ -13,7 +23,11 @@ export const bulkAnalystPrompt = (themes: Theme[], units: DataUnit[], fewShotExa
     3. **Data to Analyze:** ${JSON.stringify(units)}
 
     ### Task
-    Code the "Data to Analyze" using the Taxonomy. Assign a theme and subtheme to *every* unit (no nulls). Always use valid themeId and subThemeId from the codebook.
+    Code the "Data to Analyze" using the Taxonomy. Assign a theme and subtheme to *every* unit (no nulls). 
+    
+    **CRITICAL: Use Array Indices for IDs.**
+    - Instead of "themeId", return "themeIndex" (integer).
+    - Instead of "subThemeId", return "subThemeIndex" (integer).
 
     ### Alignment Strategy
     1. **Pattern Matching:** Compare new units against the "Gold Standard Examples." If a new unit resembles a Gold Standard example, apply the same coding logic.
@@ -26,13 +40,13 @@ export const bulkAnalystPrompt = (themes: Theme[], units: DataUnit[], fewShotExa
     [
       {
         "unitId": "u105",
-        "themeId": "t2",
-        "subThemeId": "s2-3",
+        "themeIndex": 0,
+        "subThemeIndex": 2,
         "strictFit": true,
         "reasoning": "Similar to Gold Standard example regarding 'server latency'."
       }
     ]
-    (strictFit: true when clear match; strictFit: false when best guess only. themeId/subThemeId must always be valid IDs.)
+    (strictFit: true when clear match; strictFit: false when best guess only. Indices must correspond to the provided Codebook arrays.)
       `;
 
 export const bulkCriticPrompt = (themes: Theme[], auditPayload: any[]) => `
@@ -137,3 +151,33 @@ export const narrativePrompt = (organizedData: any[]) => `
     ### Output
     Return the report as a clean Markdown string.
     `;
+
+export const librarianPrompt = (themeName: string, subThemes: any[]) => `
+    ### Role
+    You are a Research Librarian. Your goal is to select the most "punchy" and representative quotes for a specific Theme.
+
+    ### Theme
+    **${themeName}**
+
+    ### Sub-Themes & Candidate Quotes
+    ${JSON.stringify(subThemes, null, 2)}
+
+    ### Task
+    For each Sub-Theme, select exactly 3 quotes that best capture the essence of that sub-theme.
+    - **Criteria:** Clear, emotional/descriptive, and representative.
+    - **Avoid:** Short/vague quotes like "Yes" or "I agree."
+
+    ### Output
+    Return ONLY a JSON array of selected quotes.
+    Structure:
+    [
+      {
+        "subThemeId": "s1-1",
+        "selectedQuotes": [
+          "Quote 1 text... (Unit 5)",
+          "Quote 2 text... (Unit 12)",
+          "Quote 3 text... (Unit 99)"
+        ]
+      }
+    ]
+`;

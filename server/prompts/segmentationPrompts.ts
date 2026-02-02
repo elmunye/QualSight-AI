@@ -19,6 +19,16 @@ export const segmentationPrompt = (text: string) => `
           1. Granularity: Do not merge two distinct ideas into one unit. Conversely, do not break a single coherent story into fragments that lose meaning.
           2. Citations & Meta-data: Keep citations (e.g., Smith, 2021) attached to the relevant sentence.
           3. Verbatim Integrity: Do not summarize or paraphrase. Keep the participant's original language intact.
+          
+          ### Examples of Verbatim Integrity
+          BAD (Paraphrasing):
+          Input: "I was like, well, maybe?"
+          Output: "I was unsure." (INCORRECT - Do not paraphrase)
+
+          GOOD (Verbatim):
+          Input: "I was like, well, maybe?"
+          Output: "I was like, well, maybe?" (CORRECT - Verbatim)
+
           4. Formatting: Output ONLY a valid JSON array of strings.
 
           Input Text:

@@ -23,6 +23,47 @@ export const FLASH_MODEL_ID = "gemini-2.5-flash";
 export const proModel = genAI.getGenerativeModel({ model: PRO_MODEL_ID });
 export const flashModel = genAI.getGenerativeModel({ model: FLASH_MODEL_ID });
 
+export const jsonConfig = {
+  responseMimeType: "application/json",
+};
+
+/**
+ * Robust JSON generation with retry logic for SyntaxErrors.
+ * Uses native responseMimeType: 'application/json' where possible.
+ */
+export const generateJSON = async (model: any, prompt: string, retries = 1): Promise<any> => {
+  let attempts = 0;
+  let lastError: any;
+
+  while (attempts <= retries) {
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: jsonConfig
+      });
+      const text = result.response.text();
+      // Even with mimeType, some models might wrap in ```json ... ``` or add whitespace
+      const cleaned = cleanJSON(text);
+      return JSON.parse(cleaned);
+    } catch (err: any) {
+      lastError = err;
+      // Only retry on JSON parse errors (SyntaxError)
+      const isSyntaxError = err instanceof SyntaxError || err.message?.includes('JSON');
+      
+      if (isSyntaxError && attempts < retries) {
+        console.warn(`JSON Parse Error. Retrying... (${attempts + 1}/${retries})`);
+        // Append error to prompt to guide model fix
+        prompt += `\n\nERROR: The previous response was invalid JSON. Error: ${err.message}. \nFix the JSON syntax and return ONLY the valid JSON.`;
+        attempts++;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
+};
+
+
 // --- CRITICAL FIX 1: The JSON Scrubber ---
 // This prevents crashes when Gemini wraps output in Markdown
 export const cleanJSON = (rawText: string) => {

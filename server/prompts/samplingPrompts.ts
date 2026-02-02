@@ -6,7 +6,7 @@ export const selectorPrompt = (themes: Theme[], units: DataUnit[]) => `
 
     ### Input
     1. **Codebook:** ${JSON.stringify(themes)}
-    2. **Data Pool:** ${JSON.stringify(units)}
+    2. **Data Pool:** ${JSON.stringify(units.map((u, i) => ({ index: i, ...u })))}
 
     ### Task
     Scan the Data Pool and identify the *single best* text segment that exemplifies each Sub-theme in the Codebook.
@@ -18,7 +18,9 @@ export const selectorPrompt = (themes: Theme[], units: DataUnit[]) => `
 
     ### Output
     Return ONLY a JSON array of objects connecting a unit to a theme.
-    Format: [{"unitId": "u12", "themeId": "t1", "subThemeId": "s1-1"}]
+    **CRITICAL: Use the 'index' from the Data Pool.**
+
+    Format: [{"unitIndex": 12, "themeId": "t1", "subThemeId": "s1-1"}]
     `;
 
 export const sampleCoderPrompt = (themes: Theme[], selectedUnits: DataUnit[]) => `
