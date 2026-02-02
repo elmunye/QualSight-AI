@@ -2,15 +2,7 @@ import { Theme, DataUnit, CodedUnit, SampleCorrection } from "../types";
 import { STEP_1_SEGMENTATION, ROUTE_2_GENERATE_TAXONOMY, ROUTE_3_GENERATE_SAMPLE_CODING, ROUTE_4_BULK_ANALYSIS, STEP_5_NARRATIVE } from "../constants/workflowSteps.js";
 
 // --- BRIDGE CONFIGURATION ---
-// In local dev (Vite): use same origin so /api is proxied to backend (see vite.config proxy).
-// When opening built app on 8080: same origin. When deployed: use production API.
-const isLocal = window.location.hostname === 'localhost' ||
-                window.location.hostname === '127.0.0.1' ||
-                window.location.hostname.startsWith('192.168.');
-
-export const BRIDGE_URL = isLocal
-  ? `${window.location.origin}/api`
-  : 'https://qualisight-v1-113045604803.us-central1.run.app/api';
+export const BRIDGE_URL = '/api';
 
 /**
  * Fetch the analyst prompt template for display/edit (purpose substituted, {{DATA}} as placeholder).
