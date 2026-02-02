@@ -21,6 +21,7 @@ import {
   performBulkAnalysis,
   generateNarrative
 } from './services/geminiService';
+import { STEP_1_SEGMENTATION, STEP_2A_TAXONOMY_ANALYST, STEP_3A_SAMPLE_SELECTOR, STEP_3B_SAMPLE_CODER, STEP_4A_BULK_ANALYST, STEP_5_NARRATIVE } from './constants/workflowSteps.js';
 
 const App: React.FC = () => {
   const [showLanding, setShowLanding] = useState(true);
@@ -49,15 +50,24 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
-  const handleIngestionComplete = async (text: string, context: ContextType) => {
+  const handleIngestionComplete = async (
+    text: string,
+    context: ContextType,
+    purpose?: string,
+    customAnalystPrompt?: string
+  ) => {
     setLoading(true);
     try {
       setRawData(text);
       setDataContext(context);
-      
-      // Parallel execution: Segment data AND Generate Taxonomy
+      const taxonomyOptions =
+        purpose !== undefined || customAnalystPrompt !== undefined
+          ? { purpose, customAnalystPrompt }
+          : undefined;
+
+      // Parallel: Step 1 (Segmentation) + Steps 2a/2b/2c (Taxonomy)
       const [taxonomy, units] = await Promise.all([
-        generateTaxonomy(text, context),
+        generateTaxonomy(text, context, taxonomyOptions),
         segmentData(text)
       ]);
       
@@ -65,8 +75,9 @@ const App: React.FC = () => {
       setDataUnits(units);
       setPhase(AppPhase.TAXONOMY);
     } catch (e) {
-      console.error("Ingestion Error", e);
-      alert("Error processing data. Please try again.");
+      console.error(`${STEP_1_SEGMENTATION} / Taxonomy Error`, e);
+      const msg = e instanceof Error ? e.message : "Error processing data. Please try again.";
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -74,11 +85,9 @@ const App: React.FC = () => {
 
   const handleTaxonomyApproval = async (approvedThemes: Theme[]) => {
     setThemes(approvedThemes);
-    // NEW: Open the selection screen instead of jumping to sampling
-    setPhase(AppPhase.SAMPLING_SELECTION); 
+    setPhase(AppPhase.SAMPLING_SELECTION);
   };
 
-  // NEW: Add this function below handleTaxonomyApproval
   const handleStartSampling = async (mode: 'quick' | 'comprehensive') => {
     setLoading(true);
     try {
@@ -86,14 +95,17 @@ const App: React.FC = () => {
       setSampleUnits(samples);
       setPhase(AppPhase.SAMPLING);
     } catch (e) {
-      console.error("Sampling Error", e);
+      console.error(`${STEP_3B_SAMPLE_CODER} Error`, e);
       alert("Failed to generate samples.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSamplingComplete = async (corrections: SampleCorrection[]) => {
+  const handleSamplingComplete = async (
+    corrections: SampleCorrection[],
+    goldStandardUnits: { unitId: string; text: string; themeId: string; subThemeId: string }[]
+  ) => {
     setLoading(true);
     setProgress(0);
     setTotalUnits(dataUnits.length);
@@ -105,8 +117,8 @@ const App: React.FC = () => {
       for (let i = 0; i < dataUnits.length; i += batchSize) {
         const batch = dataUnits.slice(i, i + batchSize);
         
-        // 1. Get the results from the server
-        const batchResults = await performBulkAnalysis(batch, themes, corrections);
+        // 1. Get the results from the server (gold standard used as few-shot in Step 4a)
+        const batchResults = await performBulkAnalysis(batch, themes, corrections, goldStandardUnits);
         
         // 2. EXTRA SAFETY: Double-check the text is attached before saving
         const verifiedBatch = batchResults.map(result => {
@@ -139,7 +151,7 @@ const App: React.FC = () => {
       
       setPhase(AppPhase.ANALYSIS);
     } catch (e) {
-      console.error("Analysis Error", e);
+      console.error("Bulk analysis (Steps 4a/4b/4c) Error", e);
       alert("Failed to perform bulk analysis.");
     } finally {
       setLoading(false);
@@ -153,7 +165,7 @@ const App: React.FC = () => {
       const narrative = await generateNarrative(analysisResults.codedUnits, themes);
       setAnalysisResults({ ...analysisResults, narrative });
     } catch (e) {
-      console.error("Narrative Error", e);
+      console.error(`${STEP_5_NARRATIVE} Error`, e);
     } finally {
       setNarrativeLoading(false);
     }
@@ -174,18 +186,17 @@ return (
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto mb-6"></div>
             
             {phase === AppPhase.INGESTION && (
-              <p className="text-slate-500">Segmenting data and proposing themes...</p>
+              <p className="text-slate-500">{STEP_1_SEGMENTATION} & {STEP_2A_TAXONOMY_ANALYST}…</p>
             )}
 
-            {/* If we are loading while in Taxonomy phase, it means we are fetching the samples */}
             {phase === AppPhase.SAMPLING_SELECTION && (
-              <p className="text-slate-500">Scanning dataset for "Coded Units with Lowest Confidence Scores"...</p>
+              <p className="text-slate-500">{STEP_3A_SAMPLE_SELECTOR} & {STEP_3B_SAMPLE_CODER}…</p>
             )}
 
             {phase === AppPhase.SAMPLING && (
               <>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Analyzing Full Dataset</h3>
-                <p className="text-slate-500 mb-8">Applying your logic to every unit...</p>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Steps 4a, 4b, 4c – Bulk analysis</h3>
+                <p className="text-slate-500 mb-8">{STEP_4A_BULK_ANALYST} applying your corrections to every unit…</p>
 
                 <div className="w-full bg-slate-200 rounded-full h-3 mb-3 overflow-hidden">
                   <div 

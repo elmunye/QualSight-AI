@@ -1,0 +1,17 @@
+# Keep Docker build context small
+.git
+.gcloudignore
+.gitignore
+node_modules
+dist
+.env
+.env.*
+*.log
+logs
+.vscode
+.idea
+.DS_Store
+docs
+.cursor
+*.md
+!README.md

@@ -34,10 +34,15 @@ export interface DataUnit {
 }
 
 export interface CodedUnit extends DataUnit {
+  unitId?: string; // API often returns unitId; same as id for a coded unit
   themeId: string;
   subThemeId: string;
   confidence: number;
-  rationale?: string; // Why AI chose this
+  rationale?: string; // Why AI chose this (sample phase)
+  reasoning?: string; // Same as rationale (bulk/sample API returns "reasoning")
+  peerValidated?: boolean;
+  /** When false, the coder flagged this as no strict fit (best guess only). User should review. */
+  strictFit?: boolean;
 }
 
 export interface SampleCorrection {

@@ -1,0 +1,20 @@
+# Do not upload these when deploying (e.g. gcloud run deploy --source .)
+# Mirrors .gitignore and adds build artifacts / local-only files.
+.git
+.gitignore
+.gcloudignore
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.local
+.vscode
+.idea
+.DS_Store
+*.log
+logs
+docs
+.cursor
+*.md
+!README.md
