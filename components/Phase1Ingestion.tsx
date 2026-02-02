@@ -1,7 +1,7 @@
 import React, { useState, ChangeEvent } from 'react';
 import { ContextType } from '../types';
 import { Upload, FileText, Eye, X, MessageSquareText } from 'lucide-react';
-import { fetchTaxonomyPromptTemplate } from '../services/geminiService';
+import { useTaxonomyPromptTemplate } from '../services/apiHooks';
 
 interface Props {
   onComplete: (data: string, context: ContextType, purpose?: string, customAnalystPrompt?: string) => void;
@@ -17,12 +17,14 @@ const Phase1Ingestion: React.FC<Props> = ({ onComplete, isLoading }) => {
   const [promptLoading, setPromptLoading] = useState(false);
   const [hasEditedPrompt, setHasEditedPrompt] = useState(false);
 
+  const promptTemplateMutation = useTaxonomyPromptTemplate();
+
   const handleOpenPrompt = async () => {
     setShowPromptModal(true);
     if (!hasEditedPrompt) {
       setPromptLoading(true);
       try {
-        const prompt = await fetchTaxonomyPromptTemplate(purpose || undefined);
+        const prompt = await promptTemplateMutation.mutateAsync(purpose || undefined);
         setPromptText(prompt);
       } catch {
         setPromptText('Could not load prompt template. Check that the server is running.');

@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "test": "vitest",
+    "start": "tsx server.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -15,18 +16,29 @@
     "@google-cloud/vertexai": "^1.10.0",
     "@google/genai": "^1.38.0",
     "@google/generative-ai": "^0.24.1",
+    "@tanstack/react-query": "^5.90.20",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "lucide-react": "^0.563.0",
+    "p-queue": "^9.1.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0",
+    "zod-express-middleware": "^1.4.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.7",
     "@vitejs/plugin-react": "^5.0.0",
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   }
 }

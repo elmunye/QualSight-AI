@@ -34,7 +34,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env from project root (same folder as server.js) so it works regardless of cwd
 dotenv.config({ path: path.join(__dirname, '.env') });
-const app = express();
+export const app = express();
 
 // --- CRITICAL FIX 1: The JSON Scrubber ---
 // This prevents crashes when Gemini wraps output in Markdown
@@ -805,9 +805,11 @@ app.get('/*path', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`🚀 QualiSight LIVE on port ${port}`);
-  console.log(`   Models: ${PRO_MODEL_ID}, ${FLASH_MODEL_ID}`);
-  console.log(`   Open in browser: http://localhost:${port}`);
-  console.log(`   (For dev UI on port 3000, run "npm run dev" in another terminal.)`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 QualiSight LIVE on port ${port}`);
+    console.log(`   Models: ${PRO_MODEL_ID}, ${FLASH_MODEL_ID}`);
+    console.log(`   Open in browser: http://localhost:${port}`);
+    console.log(`   (For dev UI on port 3000, run "npm run dev" in another terminal.)`);
+  });
+}

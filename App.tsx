@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Layout from './components/Layout';
 import LandingPage from './components/LandingPage';
 import Phase1Ingestion from './components/Phase1Ingestion';
@@ -11,17 +12,17 @@ import {
   Theme, 
   DataUnit, 
   CodedUnit, 
-  SampleCorrection,
-  AnalysisResult 
+  SampleCorrection
 } from './types';
 import { 
-  generateTaxonomy, 
-  segmentData, 
-  generateSampleCoding, 
-  performBulkAnalysis,
-  generateNarrative
-} from './services/geminiService';
-import { STEP_1_SEGMENTATION, STEP_2A_TAXONOMY_ANALYST, STEP_3A_SAMPLE_SELECTOR, STEP_3B_SAMPLE_CODER, STEP_4A_BULK_ANALYST, STEP_5_NARRATIVE } from './constants/workflowSteps.js';
+  useSegmentData, 
+  useGenerateTaxonomy, 
+  useGenerateSampleCoding, 
+  useBulkAnalysisJob
+} from './services/apiHooks';
+import { STEP_1_SEGMENTATION, STEP_2A_TAXONOMY_ANALYST, STEP_3A_SAMPLE_SELECTOR, STEP_3B_SAMPLE_CODER } from './constants/workflowSteps.js';
+
+const queryClient = new QueryClient();
 
 const App: React.FC = () => {
   const [showLanding, setShowLanding] = useState(true);
@@ -33,8 +34,6 @@ const App: React.FC = () => {
     criticModel: "Gemini 2.5 Flash"
   });
   const [loading, setLoading] = useState(false);
-  const [narrativeLoading, setNarrativeLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [totalUnits, setTotalUnits] = useState(0);
 
   // Data Store
@@ -44,10 +43,14 @@ const App: React.FC = () => {
   
   const [themes, setThemes] = useState<Theme[]>([]);
   const [sampleUnits, setSampleUnits] = useState<CodedUnit[]>([]);
-  const [sampleCorrections, setSampleCorrections] = useState<SampleCorrection[]>([]);
   
-  const [analysisResults, setAnalysisResults] = useState<AnalysisResult | null>(null);
-
+  const [jobId, setJobId] = useState<string | null>(null);
+  
+  const segmentMutation = useSegmentData();
+  const taxonomyMutation = useGenerateTaxonomy();
+  const sampleMutation = useGenerateSampleCoding();
+  const bulkJobMutation = useBulkAnalysisJob();
+  
   // --- Handlers ---
 
   const handleIngestionComplete = async (
@@ -66,13 +69,13 @@ const App: React.FC = () => {
           : undefined;
 
       // Parallel: Step 1 (Segmentation) + Steps 2a/2b/2c (Taxonomy)
-      const [taxonomy, units] = await Promise.all([
-        generateTaxonomy(text, context, taxonomyOptions),
-        segmentData(text)
+      const [taxonomyResult, unitsResult] = await Promise.all([
+        taxonomyMutation.mutateAsync({ text, context, options: taxonomyOptions }),
+        segmentMutation.mutateAsync(text)
       ]);
       
-      setThemes(taxonomy);
-      setDataUnits(units);
+      setThemes(taxonomyResult);
+      setDataUnits(unitsResult);
       setPhase(AppPhase.TAXONOMY);
     } catch (e) {
       console.error(`${STEP_1_SEGMENTATION} / Taxonomy Error`, e);
@@ -91,7 +94,7 @@ const App: React.FC = () => {
   const handleStartSampling = async (mode: 'quick' | 'comprehensive') => {
     setLoading(true);
     try {
-      const samples = await generateSampleCoding(dataUnits, themes, mode);
+      const samples = await sampleMutation.mutateAsync({ units: dataUnits, themes, mode });
       setSampleUnits(samples);
       setPhase(AppPhase.SAMPLING);
     } catch (e) {
@@ -107,67 +110,22 @@ const App: React.FC = () => {
     goldStandardUnits: { unitId: string; text: string; themeId: string; subThemeId: string }[]
   ) => {
     setLoading(true);
-    setProgress(0);
     setTotalUnits(dataUnits.length);
 
-    let allCodedResults: CodedUnit[] = [];
-    const batchSize = 10;
-
     try {
-      for (let i = 0; i < dataUnits.length; i += batchSize) {
-        const batch = dataUnits.slice(i, i + batchSize);
-        
-        // 1. Get the results from the server (gold standard used as few-shot in Step 4a)
-        const batchResults = await performBulkAnalysis(batch, themes, corrections, goldStandardUnits);
-        
-        // 2. EXTRA SAFETY: Double-check the text is attached before saving
-        const verifiedBatch = batchResults.map(result => {
-          const original = batch.find(u => String(u.id) === String(result.unitId));
-          return {
-            ...result,
-            text: original ? original.text : result.text // Keep the original text if found
-          };
+        const id = await bulkJobMutation.mutateAsync({ 
+            units: dataUnits, 
+            themes, 
+            corrections, 
+            goldStandardUnits 
         });
-
-        allCodedResults = [...allCodedResults, ...verifiedBatch];
-        setProgress(Math.min(i + batchSize, dataUnits.length));
-      }
-
-      // Calculate the chart numbers
-      const themeCounts: Record<string, number> = {};
-      const subThemeCounts: Record<string, number> = {};
-      
-      allCodedResults.forEach(u => {
-        themeCounts[u.themeId] = (themeCounts[u.themeId] || 0) + 1;
-        subThemeCounts[u.subThemeId] = (subThemeCounts[u.subThemeId] || 0) + 1;
-      });
-
-      setAnalysisResults({
-        codedUnits: allCodedResults,
-        narrative: '',
-        themeCounts,
-        subThemeCounts
-      });
-      
-      setPhase(AppPhase.ANALYSIS);
+        setJobId(id);
+        setPhase(AppPhase.ANALYSIS);
     } catch (e) {
       console.error("Bulk analysis (Steps 4a/4b/4c) Error", e);
-      alert("Failed to perform bulk analysis.");
+      alert("Failed to start bulk analysis job.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleGenerateNarrative = async () => {
-    if (!analysisResults) return;
-    setNarrativeLoading(true);
-    try {
-      const narrative = await generateNarrative(analysisResults.codedUnits, themes);
-      setAnalysisResults({ ...analysisResults, narrative });
-    } catch (e) {
-      console.error(`${STEP_5_NARRATIVE} Error`, e);
-    } finally {
-      setNarrativeLoading(false);
     }
   };
 
@@ -177,7 +135,8 @@ if (showLanding) {
 }
 
 return (
-  <Layout currentPhase={phase} models={models}>
+    <QueryClientProvider client={queryClient}>
+      <Layout currentPhase={phase} models={models}>
       
       {/* Global Loading Overlay */}
       {loading && (
@@ -191,23 +150,6 @@ return (
 
             {phase === AppPhase.SAMPLING_SELECTION && (
               <p className="text-slate-500">{STEP_3A_SAMPLE_SELECTOR} & {STEP_3B_SAMPLE_CODER}…</p>
-            )}
-
-            {phase === AppPhase.SAMPLING && (
-              <>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Steps 4a, 4b, 4c – Bulk analysis</h3>
-                <p className="text-slate-500 mb-8">{STEP_4A_BULK_ANALYST} applying your corrections to every unit…</p>
-
-                <div className="w-full bg-slate-200 rounded-full h-3 mb-3 overflow-hidden">
-                  <div 
-                    className="bg-brand-600 h-3 rounded-full transition-all duration-500" 
-                    style={{ width: `${totalUnits > 0 ? (progress / totalUnits) * 100 : 0}%` }}
-                  ></div>
-                </div>
-                <div className="text-sm font-semibold text-slate-600">
-                  {progress} / {totalUnits} units
-                </div>
-              </>
             )}
           </div>
         </div>
@@ -262,15 +204,15 @@ return (
         />
       )}
 
-      {phase === AppPhase.ANALYSIS && analysisResults && (
+      {phase === AppPhase.ANALYSIS && (
         <Phase4Dashboard 
-            results={analysisResults} 
+            jobId={jobId}
             themes={themes}
-            isGeneratingNarrative={narrativeLoading}
-            onGenerateNarrative={handleGenerateNarrative}
+            totalUnits={totalUnits}
         />
       )}
-    </Layout>
+      </Layout>
+    </QueryClientProvider>
   );
   };
 

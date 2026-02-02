@@ -1,24 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnalysisResult, Theme, CodedUnit } from '../types';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts';
 import { Download, FileText, LayoutGrid, List } from 'lucide-react';
+import { useJobStatus, useGenerateNarrative } from '../services/apiHooks';
+import { STEP_4A_BULK_ANALYST } from '../constants/workflowSteps';
 
 interface Props {
-  results: AnalysisResult;
+  jobId: string | null;
   themes: Theme[];
-  isGeneratingNarrative: boolean;
-  onGenerateNarrative: () => void;
+  totalUnits: number;
 }
 
 const Phase4Dashboard: React.FC<Props> = ({ 
-    results, themes, isGeneratingNarrative, onGenerateNarrative 
+    jobId, themes, totalUnits
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+
+  const { data: jobStatus } = useJobStatus(jobId);
+  const narrativeMutation = useGenerateNarrative();
+
+  useEffect(() => {
+    if (jobStatus?.status === 'completed' && jobStatus.result) {
+      const allCodedResults = jobStatus.result;
+      
+      const themeCounts: Record<string, number> = {};
+      const subThemeCounts: Record<string, number> = {};
+      
+      allCodedResults.forEach((u: any) => {
+        themeCounts[u.themeId] = (themeCounts[u.themeId] || 0) + 1;
+        subThemeCounts[u.subThemeId] = (subThemeCounts[u.subThemeId] || 0) + 1;
+      });
+
+      setResults({
+        codedUnits: allCodedResults,
+        narrative: '',
+        themeCounts,
+        subThemeCounts
+      });
+    }
+  }, [jobStatus]);
+
+  const handleGenerateNarrative = async () => {
+    if (!results) return;
+    setNarrativeLoading(true);
+    try {
+      const result = await narrativeMutation.mutateAsync({ units: results.codedUnits, themes });
+      setResults({ ...results, narrative: result });
+    } catch (e) {
+      console.error('Narrative generation error', e);
+    } finally {
+      setNarrativeLoading(false);
+    }
+  };
 
   // --- BEGIN EXPORT LOGIC ---
   const handleExportCSV = () => {
+    if (!results) return;
     // 1. Define the column titles
     const headers = ["Observation", "Primary Theme", "Sub-Theme", "Confidence"];
     
@@ -52,16 +93,46 @@ const Phase4Dashboard: React.FC<Props> = ({
   };
   // --- END EXPORT LOGIC ---
 
+  const getThemeName = (id: string) => themes.find(t => t.id === id)?.name || id;
+  const getSubThemeName = (tid: string, sid: string) => 
+    themes.find(t => t.id === tid)?.subThemes.find(s => s.id === sid)?.name || sid;
+
+  if (!results) {
+     if (jobStatus?.status === 'failed') {
+         return (
+             <div className="p-8 text-center">
+                 <div className="text-red-500 text-xl font-bold mb-2">Analysis Failed</div>
+                 <p className="text-slate-600">{jobStatus.error || "Unknown error occurred"}</p>
+             </div>
+         );
+     }
+
+     // Loading state
+     return (
+        <div className="fixed inset-0 bg-white/95 backdrop-blur-md z-50 flex items-center justify-center text-center">
+          <div className="w-full max-w-md px-6">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto mb-6"></div>
+            
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Steps 4a, 4b, 4c – Bulk analysis</h3>
+            <p className="text-slate-500 mb-8">{STEP_4A_BULK_ANALYST} applying your corrections to every unit…</p>
+
+            <div className="w-full bg-slate-200 rounded-full h-3 mb-3 overflow-hidden">
+                <div className="bg-brand-600 h-3 rounded-full animate-pulse w-full"></div>
+            </div>
+            <div className="text-sm font-semibold text-slate-600">
+                Processing...
+            </div>
+          </div>
+        </div>
+     );
+  }
+
   // Prepare chart data
   const chartData = themes.map((theme, index) => ({
     name: theme.name,
     count: results.themeCounts[theme.id] || 0,
     color: `hsl(${200 + (index * 30)}, 70%, 50%)`
   })).sort((a, b) => b.count - a.count);
-
-  const getThemeName = (id: string) => themes.find(t => t.id === id)?.name || id;
-  const getSubThemeName = (tid: string, sid: string) => 
-    themes.find(t => t.id === tid)?.subThemes.find(s => s.id === sid)?.name || sid;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
@@ -144,11 +215,11 @@ const Phase4Dashboard: React.FC<Props> = ({
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-slate-800">Research Narrative</h3>
                     <button 
-                        onClick={onGenerateNarrative}
-                        disabled={isGeneratingNarrative}
+                        onClick={handleGenerateNarrative}
+                        disabled={narrativeLoading}
                         className="text-sm bg-brand-50 text-brand-700 px-3 py-1 rounded-md font-medium hover:bg-brand-100 disabled:opacity-50"
                     >
-                        {isGeneratingNarrative ? 'Synthesizing...' : results.narrative ? 'Regenerate' : 'Generate Narrative'}
+                        {narrativeLoading ? 'Synthesizing...' : results.narrative ? 'Regenerate' : 'Generate Narrative'}
                     </button>
                 </div>
                 
