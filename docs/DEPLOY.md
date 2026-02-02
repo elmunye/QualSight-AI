@@ -86,7 +86,7 @@ SERVICE_NAME=qualisight-prod REGION=us-central1 ./scripts/deploy.sh
 The app expects configuration (e.g. Gemini/Vertex) via environment variables or Application Default Credentials (ADC). After the first deploy:
 
 1. Open [Cloud Run](https://console.cloud.google.com/run) → your service → **Edit & deploy new revision**.
-2. Under **Variables & secrets**, add the same env vars you use locally (e.g. `GEMINI_API_KEY` or whatever your `server.js` / `geminiService` read).
+2. Under **Variables & secrets**, add the same env vars you use locally (e.g. `GEMINI_API_KEY` or whatever your `server.ts` / `geminiService` read).
 3. For Vertex AI, ensure the Cloud Run service account has **Vertex AI User** (or equivalent) so ADC can call the API.
 
 Redeploy or **Deploy** the new revision after changing env vars.
@@ -110,7 +110,7 @@ Use `PORT=8080` and the same env vars as in production.
 
 | File               | Purpose |
 |--------------------|--------|
-| `Dockerfile`       | Image: Node 18, install, build frontend, run `server.js`. |
+| `Dockerfile`       | Image: Node 18, install, build frontend, run `server.ts`. |
 | `.dockerignore`    | Keeps build context small (excludes `node_modules`, `.git`, etc.). |
 | `cloudbuild.yaml`  | Cloud Build steps: build image, push to Artifact Registry, deploy to Cloud Run. |
 | `.gcloudignore`    | Excludes unneeded files when using `gcloud builds submit`. |

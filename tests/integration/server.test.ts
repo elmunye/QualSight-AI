@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { app } from '../../server.js';
+import { app } from '../../server.ts';
 
 describe('Server Integration Tests', () => {
   it('should return 404 for unknown routes', async () => {

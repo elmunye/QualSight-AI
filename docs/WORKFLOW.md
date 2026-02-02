@@ -45,7 +45,7 @@ This document describes how each step is **triggered** (from the frontend), whic
 | **Step / Agent** | **Step 1 – Segmentation** \| **Agent: Pro (Segmenter)** |
 | **Input** | `{ text: string }` – raw pasted/uploaded text |
 | **Output** | Array of **data units**: `[{ id: "u0", text: "…", sourceId: "upload-1" }, …]` |
-| **Server** | `server.js`: unitizing prompt → `proModel.generateContent()` → `JSON.parse(cleanJSON(...))` → map to `{ id, text, sourceId }` → `res.json(units)` |
+| **Server** | `server.ts`: unitizing prompt → `proModel.generateContent()` → `JSON.parse(cleanJSON(...))` → map to `{ id, text, sourceId }` → `res.json(units)` |
 
 The result is stored in `dataUnits` and used later for sampling and bulk analysis.
 
@@ -130,7 +130,7 @@ Batches are requested sequentially from the frontend; results are concatenated i
 | **Step / Agent** | **Step 5 – Narrative** \| **Agent: Pro (Narrative)** |
 | **Input** | `{ units: CodedUnit[], themes: Theme[] }` (units are capped to first 50 in the prompt) |
 | **Output** | `{ text: string }` – narrative summary (3–4 paragraphs) |
-| **Server** | `server.js`: narrative prompt with themes + analyzed data → `proModel.generateContent()` → `res.json({ text: narrativeText })` |
+| **Server** | `server.ts`: narrative prompt with themes + analyzed data → `proModel.generateContent()` → `res.json({ text: narrativeText })` |
 
 The narrative is stored in `analysisResults.narrative` and shown on the dashboard.
 
@@ -163,4 +163,4 @@ Used only to display and optionally edit the prompt before **Step 2a** (Taxonomy
 | Step 5 | `POST /api/generate-narrative` | Pro (Narrative) | units, themes | { text } |
 | — | `GET /api/taxonomy-prompt` | — | purpose (query) | { prompt } |
 
-This should make it clear how the steps are executed: the **order and parallelism** are determined by the frontend (App phases and handlers); each **step** corresponds to one or more **agent** calls inside a single API route in `server.js`. Use the labels from **`constants/workflowSteps.js`** everywhere for consistency.
+This should make it clear how the steps are executed: the **order and parallelism** are determined by the frontend (App phases and handlers); each **step** corresponds to one or more **agent** calls inside a single API route in `server.ts`. Use the labels from **`constants/workflowSteps.js`** everywhere for consistency.
