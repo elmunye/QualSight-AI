@@ -1,5 +1,5 @@
-# Use the official lightweight Node.js image.
-FROM node:18-slim
+# Use Node 20 (required by @google/genai, @vitejs/plugin-react, p-queue, vitest).
+FROM node:20-slim
 
 # Create and change to the app directory.
 WORKDIR /usr/src/app
@@ -7,13 +7,17 @@ WORKDIR /usr/src/app
 # Copy application dependency manifests to the container image.
 COPY package*.json ./
 
-# Install dependencies.
-RUN npm install
+# Resolve peer conflict (zod-express-middleware expects @types/express@4; project uses @5).
+RUN echo "legacy-peer-deps=true" > .npmrc
+
+# Install dependencies (use npm ci for reproducible installs; requires package-lock.json).
+RUN npm ci
 
 # Copy local code to the container image.
 COPY . .
 
-# Build the React frontend (assuming your build script is 'npm run build')
+# Build the React frontend (NODE_ENV=production for Vite build).
+ENV NODE_ENV=production
 RUN npm run build
 
 # Service must listen to $PORT env var.

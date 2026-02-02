@@ -64,6 +64,14 @@ if [[ -n "$PROJECT_NUM" ]]; then
   echo ""
 fi
 
+# Optional: capture local Docker build output for debugging (DEBUG_DEPLOY=1).
+if [[ -n "${DEBUG_DEPLOY:-}" ]] && command -v docker &>/dev/null; then
+  LOG_PATH="${ROOT}/.cursor/debug.log"
+  echo "Running local Docker build and writing output to $LOG_PATH ..."
+  docker build -t qualisight-ai:debug . 2>&1 | tee "$LOG_PATH" || true
+  echo ""
+fi
+
 gcloud builds submit \
   --project "$GCLOUD_PROJECT" \
   --config=cloudbuild.yaml \
